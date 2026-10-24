@@ -125,12 +125,15 @@ def gh(*arguments: str, timeout: int = 60) -> str:
 
 
 def read_release(repository: str, tag: str) -> dict | None:
-    try:
-        return json.loads(gh("api", f"repos/{repository}/releases/tags/{tag}"))
-    except subprocess.CalledProcessError as error:
-        if "HTTP 404" in (error.stderr or ""):
-            return None
-        raise
+    # The by-tag endpoint only returns published releases. Authenticated release
+    # listings include drafts; paginate so an existing draft can never be missed.
+    pages = json.loads(
+        gh("api", f"repos/{repository}/releases?per_page=100", "--paginate", "--slurp")
+    )
+    matches = [item for page in pages for item in page if item.get("tag_name") == tag]
+    if len(matches) > 1:
+        raise ValueError(f"Multiple releases match tag {tag}")
+    return matches[0] if matches else None
 
 
 def remote_assets(repository: str, release_id: int) -> list[dict]:
@@ -176,7 +179,9 @@ def publish_assets(root: Path, tag: str, revision: str, repository: str, notes: 
             str(notes),
         )
         release = read_release(repository, tag)
-    if not release or not release.get("draft"):
+    if not release:
+        raise ValueError("Created release draft was not returned by GitHub")
+    if not release.get("draft"):
         raise ValueError("Refusing to overwrite an already published release")
     existing = remote_assets(repository, release["id"])
     expected_by_name = {item["name"]: item for item in records}

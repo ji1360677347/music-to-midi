@@ -66,9 +66,17 @@ XPU 构建默认对同卷的暂存资源使用 NTFS 硬链接，跨卷资源逐�
 
 ## 发布目录
 
-`release.yml` 是正式版本的唯一发布入口。推送与工程版本一致的 `vX.Y.Z` 标签，或在同一标签提交手动运行，即可执行下列流程。安装包、容器包使用同一源码 SHA；公开前校验每个平台的连续分卷和所有附件的 SHA-256。任一检查或上传失败都不会将草稿公开，也不会覆盖既有公开版本。
+`release.yml` 是完整版本的编排入口。推送与工程版本一致的 `vX.Y.Z` 标签，或在同一标签提交手动运行，即可执行下列流程；全部验收通过后自动调用 `release-publish.yml` 公开版本。安装包、容器包使用同一源码 SHA；公开前校验每个平台的连续分卷和所有附件的 SHA-256。任一检查或上传失败都不会将草稿公开，也不会覆盖既有公开版本。
 
-`release.yml` is the sole versioned-release entry. Push a matching `vX.Y.Z` tag or run it manually at that exact tagged commit. Portable and Docker packages share one source SHA; publication requires consecutive volumes and verified local/remote SHA-256 for every asset. Failed checks/uploads leave the draft unpublished and never overwrite an existing public version.
+`release.yml` coordinates a complete version. Push a matching `vX.Y.Z` tag or run it manually at that exact tagged commit; after acceptance, it automatically calls `release-publish.yml` to publish. Portable and Docker packages share one source SHA; publication requires consecutive volumes and verified local/remote SHA-256 for every asset. Failed checks/uploads leave the draft unpublished and never overwrite an existing public version.
+
+如果只有发布工具需要修复，可在修复后的分支运行 `release-publish.yml`，传入原标签 `tag` 和原 `release.yml` 运行 ID `artifact_run_id`。`tools/release_provenance.py` 要求原运行属于同一仓库、同一正式工作流、同一标签提交，所有源码、双平台安装包、容器及 Space 检查成功；外部未完成、取消或缺失验收的运行不能发布。只下载该运行三个未过期的不可变产物 ID，并由下载动作核验摘要，再逐文件核验原构建清单。发布工具可以来自修复提交，但安装包、镜像和发行说明仍来自已验收的原标签，不移动标签或重新构建。正常编排也执行同一套来源检查。
+
+When only the publisher needs repair, run `release-publish.yml` from the repaired branch with the original `tag` and `artifact_run_id` from `release.yml`. `tools/release_provenance.py` requires the same repository, release workflow and tagged source commit, with all source, native Windows/Linux, container and Space gates successful. Other unfinished, cancelled or incompletely verified runs cannot publish. Downloads select exactly three nonexpired immutable artifact IDs and require digest validation, followed by per-file build-manifest checks. Publisher code may come from a repair commit; binaries, images and release notes retain the original verified tagged source without moving the tag or rebuilding. Normal orchestration performs the same provenance checks.
+
+草稿查询使用认证后的分页 Release 列表精确匹配标签。[GitHub 的按标签接口](https://docs.github.com/en/rest/releases/releases#get-a-release-by-tag-name)只返回已公开版本，不能用于判断草稿是否存在。现有草稿附件必须与预期集合、大小、状态及摘要相符；所有附件确认完整后才公开。
+
+Draft discovery matches the exact tag in authenticated, paginated release listings. GitHub's by-tag endpoint only returns published releases, so it cannot establish draft existence. Existing draft assets must match expected names, sizes, states and digests; publication occurs only after the complete remote asset set is verified.
 
 Space 同步还必须确认 Hub 中的精确提交、运行状态 `RUNNING`、声明的 Gradio 版本及真实界面的组件和事件图。只等待官方定义的 `BUILDING`、`RUNNING_BUILDING`、`APP_STARTING`、`RUNNING_APP_STARTING` 四种中间状态；旧实例仍可访问时，也必须等待替换实例启动完成。构建错误、运行错误、未知状态、HTTP 错误或启动超时都会阻断发布；等待正在进行的构建不会重启服务或重装依赖。状态定义与 [HF 官方实现](https://github.com/huggingface/huggingface_hub/blob/main/src/huggingface_hub/_space_api.py) 和 [等待接口文档](https://huggingface.co/docs/huggingface_hub/v1.32.0/en/package_reference/hf_api#huggingface_hub.HfApi.wait_for_space) 对齐。
 
@@ -84,7 +92,9 @@ flowchart TD
     W --> H
     L --> H
     D --> H
-    H --> A[Complete assets and SHA-256 verification]
+    H --> P[release-publish: original source gates and immutable artifact IDs]
+    F[Repaired publisher + original tag/run] --> P
+    P --> A[Original-source notes, complete assets and SHA-256 verification]
     A --> U[Upload draft and verify remote assets]
     U --> R[Publish one Release]
 ```

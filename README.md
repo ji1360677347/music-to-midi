@@ -6,6 +6,8 @@
 
 [v1.10.0 功能与下载说明](docs/releases/v1.10.0.md)：Actions 统一验收 Windows/Linux 完整包、Docker 包与 Space 同步，全部成功后公开版本。Release 只附软件包及 SHA-256，测试报告与日志不作为下载附件。
 
+发布工具修复后可[继续公开原批已验收产物](docs/portable-build.md#发布目录)：核对全部验收结果、原标签提交和不可变产物身份，不移动标签或混入重新构建的附件。包内依赖与许可记录保留。
+
 <p align="center">
   中文 | <a href="./docs/README.md">English</a>
 </p>

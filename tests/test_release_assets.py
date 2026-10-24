@@ -103,7 +103,10 @@ def install_fake_github(
     root, _ = bundle
     expected = {item["name"]: item for item in release.verify_assets(root, TAG, REVISION)}
     calls = []
-    state = {"release": {"id": 7, "draft": False} if public else None, "assets": []}
+    state = {
+        "release": {"id": 7, "draft": False, "tag_name": TAG} if public else None,
+        "assets": [],
+    }
 
     def fake_gh(*args, timeout=60):
         calls.append((args, timeout))
@@ -113,7 +116,11 @@ def install_fake_github(
                 return REVISION
             if "/assets?" in endpoint:
                 return json.dumps([state["assets"]])
-            if state["release"] is None:
+            if endpoint.endswith("/releases?per_page=100"):
+                assert "--paginate" in args and "--slurp" in args
+                return json.dumps([[state["release"]] if state["release"] else []])
+            if state["release"] is None or state["release"]["draft"]:
+                # GitHub's tag endpoint returns published releases, not drafts.
                 raise subprocess.CalledProcessError(1, "gh", stderr="HTTP 404")
             return json.dumps(state["release"])
         if args[:2] == ("release", "create"):
@@ -121,6 +128,7 @@ def install_fake_github(
             state["release"] = {
                 "id": 7,
                 "draft": True,
+                "tag_name": TAG,
                 "html_url": "https://github.com/example/repo/releases/tag/" + TAG,
             }
         elif args[:2] == ("release", "upload"):
@@ -185,6 +193,21 @@ def test_api_permission_failure_does_not_create_a_new_release(monkeypatch):
         release.read_release("example/repo", TAG)
 
 
+def test_draft_lookup_uses_all_release_pages_and_exact_tag(monkeypatch):
+    draft = {"id": 8, "draft": True, "tag_name": TAG}
+    pages = [[{"id": 9, "tag_name": TAG + "-rc1"}], [draft]]
+
+    def api(*args, **kwargs):
+        assert args == ("api", "repos/example/repo/releases?per_page=100", "--paginate", "--slurp")
+        return json.dumps(pages)
+
+    monkeypatch.setattr(release, "gh", api)
+    assert release.read_release("example/repo", TAG) == draft
+    pages.append([draft])
+    with pytest.raises(ValueError, match="Multiple releases"):
+        release.read_release("example/repo", TAG)
+
+
 def test_actions_have_one_complete_release_owner():
     def workflow(name):
         return yaml.safe_load((ROOT / ".github/workflows" / name).read_text("utf-8"))
@@ -195,6 +218,9 @@ def test_actions_have_one_complete_release_owner():
     assert jobs["containers"]["uses"] == "./.github/workflows/container.yml"
     assert jobs["source"]["uses"] == "./.github/workflows/build.yml"
     assert jobs["space"]["uses"] == "./.github/workflows/sync_to_hf.yml"
+    assert jobs["release"]["uses"] == "./.github/workflows/release-publish.yml"
+    assert jobs["release"]["with"]["artifact_run_id"] == "${{ github.run_id }}"
+    publisher = workflow("release-publish.yml")
     for name in ("container.yml", "build.yml", "sync_to_hf.yml"):
         assert "workflow_call" in workflow(name)[True]
     container = (ROOT / ".github/workflows/container.yml").read_text("utf-8")
@@ -203,10 +229,12 @@ def test_actions_have_one_complete_release_owner():
     assert "tags" not in workflow("container.yml")[True]["push"]
     artifact = next(
         step
-        for step in jobs["release"]["steps"]
+        for step in publisher["jobs"]["publish"]["steps"]
         if step.get("uses", "").startswith("actions/download-artifact")
     )
-    assert artifact["with"]["pattern"] == "MusicToMidi-*"
+    assert artifact["with"]["artifact-ids"] == "${{ steps.source.outputs.artifact_ids }}"
+    assert artifact["with"]["digest-mismatch"] == "error"
+    assert artifact["with"]["run-id"] == "${{ inputs.artifact_run_id }}"
 
 
 def test_public_release_notes_do_not_publish_local_acceptance_evidence():

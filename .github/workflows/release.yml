@@ -11,6 +11,7 @@ on:
         required: true
 
 permissions:
+  actions: read
   contents: write
   packages: write
   id-token: write
@@ -1589,25 +1590,7 @@ jobs:
   release:
     name: 校验全部附件后公开 GitHub Release
     needs: [preflight, source, build, containers, space]
-    runs-on: ubuntu-24.04
-    env:
-      TAG: ${{ needs.preflight.outputs.tag }}
-
-    steps:
-      - name: 检出发布源码
-        uses: actions/checkout@v6
-
-      - name: 下载所有构建产物
-        uses: actions/download-artifact@v8
-        with:
-          pattern: MusicToMidi-*
-          path: release-assets
-          merge-multiple: true
-
-      - name: 核验分卷与源码身份、上传草稿并校验后公开版本
-        run: >-
-          python tools/release_assets.py publish --directory release-assets
-          --tag "$TAG" --revision "$GITHUB_SHA" --repository "$GITHUB_REPOSITORY"
-          --notes "docs/releases/${TAG}.md"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    uses: ./.github/workflows/release-publish.yml
+    with:
+      tag: ${{ needs.preflight.outputs.tag }}
+      artifact_run_id: ${{ github.run_id }}

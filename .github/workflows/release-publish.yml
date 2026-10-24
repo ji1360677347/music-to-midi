@@ -1,0 +1,72 @@
+name: 公开已验收版本
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+      artifact_run_id:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '已验收构建对应的现有标签'
+        required: true
+        type: string
+      artifact_run_id:
+        description: 'release.yml 运行 ID，源码、原生包、容器与 Space 检查必须全部通过'
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: release-publication-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: 发布已验收产物
+    runs-on: ubuntu-24.04
+    env:
+      TAG: ${{ inputs.tag }}
+      ARTIFACT_RUN_ID: ${{ inputs.artifact_run_id }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: 检出发布工具
+        uses: actions/checkout@v6
+
+      - name: 核对原构建的全部验收结果与不可变产物
+        id: source
+        run: >-
+          python -m tools.release_provenance --repository "$GITHUB_REPOSITORY"
+          --run-id "$ARTIFACT_RUN_ID" --tag "$TAG"
+
+      - name: 检出安装包对应的精确源码与发行说明
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.source.outputs.revision }}
+          path: release-source
+
+      - name: 下载经过来源校验的三个构建产物
+        uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ steps.source.outputs.artifact_ids }}
+          run-id: ${{ inputs.artifact_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          path: release-assets
+          merge-multiple: true
+          digest-mismatch: error
+
+      - name: 核验分卷与源码身份、上传草稿并校验后公开版本
+        env:
+          SOURCE_REVISION: ${{ steps.source.outputs.revision }}
+        run: >-
+          python tools/release_assets.py publish --directory release-assets
+          --tag "$TAG" --revision "$SOURCE_REVISION" --repository "$GITHUB_REPOSITORY"
+          --notes "release-source/docs/releases/${TAG}.md"

@@ -4,6 +4,8 @@
 
 The [v1.10.0 release notes](releases/v1.10.0.md) cover tempo correction, quantization, score duration, Windows project saves and playback fixes. Actions coordinates complete Windows/Linux bundles, Docker distribution and Space sync before publishing one Release. Downloads include packages and SHA-256 checksums; test reports and logs are not release assets.
 
+After a publisher repair, [publication can resume with the original verified artifacts](portable-build.md#发布目录). Every source gate, tagged commit and immutable artifact identity is checked again without moving the tag or mixing rebuilt downloads. Dependency inventories and license records remain inside packages.
+
 [Projects, workflow profiles and resuming](projects.en.md)
 
 [Changelog](../CHANGELOG.md)

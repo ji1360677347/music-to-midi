@@ -12,7 +12,10 @@ class CiWorkflowContractTests(unittest.TestCase):
         self.assertIn("actions/checkout@v6", workflow)
         self.assertIn("actions/setup-python@v6", workflow)
         self.assertIn("actions/upload-artifact@v7", workflow)
-        self.assertIn("actions/download-artifact@v8", workflow)
+        self.assertIn("uses: ./.github/workflows/release-publish.yml", workflow)
+        publisher = (WORKFLOWS_DIR / "release-publish.yml").read_text(encoding="utf-8")
+        self.assertIn("actions/checkout@v6", publisher)
+        self.assertIn("actions/download-artifact@v8", publisher)
 
     def test_build_workflow_uses_node24_compatible_action_majors(self):
         workflow = (WORKFLOWS_DIR / "build.yml").read_text(encoding="utf-8")

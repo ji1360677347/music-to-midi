@@ -220,8 +220,9 @@ class PortableReleaseContractTests(unittest.TestCase):
         self.assertIn("Release tag must point to this exact workflow commit", workflow)
         self.assertLess(
             workflow.index("校验版本、标签与源码提交"),
-            workflow.index("tools/release_assets.py publish"),
+            workflow.index("uses: ./.github/workflows/release-publish.yml"),
         )
+        self.assertIn("needs: [preflight, source, build, containers, space]", workflow)
 
     def test_portable_usage_and_asset_log_cover_all_seven_routes_and_backends(self):
         workflow = (REPO_ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
@@ -253,7 +254,9 @@ class PortableReleaseContractTests(unittest.TestCase):
         self.assertIn("TransKun 2.0.1 default V2", workflow)
 
     def test_release_uploads_are_bounded_and_fail_without_retries(self):
-        workflow = (REPO_ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+        workflow = (REPO_ROOT / ".github" / "workflows" / "release-publish.yml").read_text(
+            encoding="utf-8"
+        )
         publisher = (REPO_ROOT / "tools" / "release_assets.py").read_text(encoding="utf-8")
         self.assertIn("tools/release_assets.py publish", workflow)
         self.assertIn("timeout=1800", publisher)
@@ -568,11 +571,14 @@ class PortableReleaseContractTests(unittest.TestCase):
         self.assertIn("Refusing to overwrite an already published release", publisher)
 
     def test_release_workflow_updates_existing_release_notes(self):
-        workflow = (REPO_ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+        workflow = (REPO_ROOT / ".github" / "workflows" / "release-publish.yml").read_text(
+            encoding="utf-8"
+        )
         notes = (REPO_ROOT / "docs" / "releases" / "v1.8.0.md").read_text(encoding="utf-8")
 
         publisher = (REPO_ROOT / "tools" / "release_assets.py").read_text(encoding="utf-8")
-        self.assertIn('--notes "docs/releases/${TAG}.md"', workflow)
+        self.assertIn('--notes "release-source/docs/releases/${TAG}.md"', workflow)
+        self.assertIn("ref: ${{ steps.source.outputs.revision }}", workflow)
         self.assertIn('"--notes-file"', publisher)
         self.assertIn("str(notes)", publisher)
         self.assertIn('"--draft=false"', publisher)
